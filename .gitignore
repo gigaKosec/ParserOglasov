@@ -1,5 +1,6 @@
 credentials.json
 token.json
 test*
-/userData/**
+/userData/*
+!.gitkeep
 
