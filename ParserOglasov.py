@@ -61,24 +61,32 @@ def extractAttributValuesFromSoup(css_selector: str, attr: str) -> list:
 
 
 def createDictObjektovNajnovejsihProduktov(selektorji) -> dict:
-    naslovi = extractTextsInElementsFromSoup(selektorji['naslov'])
-    ceneZValuto = extractTextsInElementsFromSoup(selektorji['cena'])
-    cene = [int(i[:-2]) for i in ceneZValuto]
-    idji = extractAttributValuesFromSoup(selektorji['id_'], 'name')
-    testno = extractAttributValuesFromSoup(selektorji['objava'], 'datetime')
-    objave = [dateutil.parser.parse(i) for i in extractAttributValuesFromSoup(
-        selektorji['objava'], 'datetime')]
-    # print('\nOBJAVE:\n'objave)
-
     dictObjektovProduktov = {}
-    for naslov, cena, id_, objava in zip(naslovi, cene, idji, objave):
-        dictObjektovProduktov[naslov] = Produkt(
-            naslov, cena, id_, objava, datetime.date.today())
+    stStrani = 1
+    #stranOglasov = url+'&page='+str(stStrani)
+    for loopNum in range(3):
+        stranOglasov = url+'&page='+str(stStrani)
+        naslovi = extractTextsInElementsFromSoup(selektorji['naslov'])
+        if naslovi == []:
+            return dictObjektovProduktov
+        ceneZValuto = extractTextsInElementsFromSoup(selektorji['cena'])
+        cene = [int(i[:-2]) for i in ceneZValuto]
+        idji = extractAttributValuesFromSoup(selektorji['id_'], 'name')
+        testno = extractAttributValuesFromSoup(selektorji['objava'], 'datetime')
+        objave = [dateutil.parser.parse(i) for i in extractAttributValuesFromSoup(
+            selektorji['objava'], 'datetime')]
+        # print('\nOBJAVE:\n'objave)
+
+        for naslov, cena, id_, objava in zip(naslovi, cene, idji, objave):
+            dictObjektovProduktov[naslov] = Produkt(
+                naslov, cena, id_, objava, datetime.date.today())
+        stStrani+= 1
     return dictObjektovProduktov
 
 
+
 def getStariOglasiFromStorage(backupOglasi):
-    storage = shelve.open('storage')
+    storage = shelve.open('./userData/storage')
     #print('storage keys =', list(storage.items()))
     try:
         stariOglasi = storage['oglasi']
@@ -119,8 +127,8 @@ def sprintajOglase(oglasi):
     if input('\nZa izpis oglasov pritisni Y+[enter] \\ ali pa preskoči z [enter]: ') in ('y', 'Y'):
         print(getStringOglasov(oglasi))
 
-def primerjajCene(stariOglasi: dict, noviOglasi: dict, aliPosljeMail = True):
-    """Primerja stare in nove oglase, ter pošlje mail, če so kake spremembe - razen če argument 'aliPosljeMail'=False"""
+def primerjajCene(stariOglasi: dict, noviOglasi: dict, aliPosljeMail = False):
+    """Primerja stare in nove oglase in izpiše spremembe. Ter pošlje mail o spremembah, če argument 'aliPosljeMail'=True"""
     print('\nSPREMEMBE PRI OGLASIH')
     spremembe = []
     #updatedOglasi = stariOglasi        # to bo za nov feature zgodovine sprememb oglasov
@@ -173,7 +181,7 @@ def primerjajCene(stariOglasi: dict, noviOglasi: dict, aliPosljeMail = True):
         print(stringVsehSprememb)
     
         # poslji mail obvestilo:
-        storage = shelve.open('storage')
+        storage = shelve.open('./userData/storage')
         
         if (aliPosljeMail == True) and ('aliPosiljaMaile' in storage.keys()) and (storage['aliPosiljaMaile'] == True):
             izpisNovihOglasov = getStringOglasov(noviOglasi)
@@ -184,34 +192,40 @@ def primerjajCene(stariOglasi: dict, noviOglasi: dict, aliPosljeMail = True):
 
 
 def mockSpreminjanjeCen():
-    del(noviOglasi['Oculus Quest 128GB'])
+    #del(noviOglasi['Oculus Quest 128GB'])
     noviOglasi['avtodus'] = Produkt(
         'avtobus', 77, 111111, datetime.datetime.now(datetime.timezone.utc), {})
-    noviOglasi['Oculus Quest 64 GB'].cenaZadnja = 50
+    #noviOglasi['Oculus Quest 64 GB'].cenaZadnja = 50
 
 
 def shraniNoveCeneVStorage(noviOglasi: dict):
     # if input("\nZa shranitev novih oglasov pritisni Y+[enter] // ali pa preskoči z [enter]: ") in ['y', 'Y']:
-    storage = shelve.open('storage')
+    storage = shelve.open('./userData/storage')
     storage['oglasi'] = noviOglasi
     storage.close()
     print('\n(shranil nove oglase v storage)')
 
 
 def posljiMail(subject, telo):
-    storage = shelve.open('storage')
+    storage = shelve.open('./userData/storage')
     try:
         mailNaslov = storage['mailNaslov']
         ezgmail.send(mailNaslov, subject, telo)
         print ('\nPoslal sem mail o spremembah!')
     # če mail ni nastavljen:
-    except:
-        print ('mail za pošiljanje ni nastavljen!')
+    except ezgmail.EZGmailException as gmailNapaka:
+        print('\nPri poskusu pošiljanja emaila o spremembah se pojavila naslednja napaka:\n',gmailNapaka)
+    except KeyError as manjkaKeyNapaka:
+        print('\nEmail naslov za pošiljanje ni določen.')
     storage.close()
 
+try:
+    pass
+except expression as identifier:
+    pass
 
 def nastavitveMaila():
-    storage = shelve.open('storage')
+    storage = shelve.open('./userData/storage')
     # preveri, ali je pošiljanje mailov vklopljeno:
     if 'aliPosiljaMaile' not in storage.keys(): # (če še nikdar nastavljeno)
         storage['aliPosiljaMaile'] = False
@@ -260,7 +274,7 @@ def nastavitveMaila():
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 noviOglasi = createDictObjektovNajnovejsihProduktov(selektorji)
 stariOglasi = getStariOglasiFromStorage(noviOglasi)
-#mockSpreminjanjeCen()
+mockSpreminjanjeCen()
 primerjajCene(stariOglasi, noviOglasi, True)   # ce zelis programersko izklopit možnost posiljanja mailov, naj bo 3. argument=False 
 sprintajOglase(noviOglasi)
 shraniNoveCeneVStorage(noviOglasi)
