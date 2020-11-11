@@ -23,18 +23,20 @@ import pprint
 import ezgmail
 
 # ta url lahko tu spremeniš v poljubni search term (po keywords=)
-url = 'https://www.bolha.com/?ctl=search_ads&keywords=oculus+quest'
+url = 'https://www.bolha.com/?ctl=search_ads&keywords=bukova+drva'
 headers = {
     'User-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:81.0) Gecko/20100101 Firefox/81.0'}
 #email = 'youremailaddres@gmail.com' # spremeni v email naslov, kamor naj pošilja obvestila o spremembah ()
-page = requests.get(url, headers)
-soup = bs4.BeautifulSoup(page.content, 'html.parser')
+#page = requests.get(url, headers)
+#soup = bs4.BeautifulSoup(page.content, 'html.parser')
 selektorji = {
     'naslov': '.EntityList--Standard .EntityList-item .entity-title',
     'cena': '.EntityList--Standard .EntityList-item .price',
     'id_': '.EntityList--Standard .EntityList-item .entity-title a',
-    'objava': '.EntityList--Standard .EntityList-item .entity-pub-date .date'
+    'objava': '.EntityList--Standard .EntityList-item .entity-pub-date .date',
+    'nextPage': '.Pagination-item--next a'
 }
+#nextPageLink = extractAttributValuesFromSoup(selektorji['nextPage'], 'href')[0])
 
 
 class Produkt:
@@ -47,40 +49,48 @@ class Produkt:
         self.status = 'aktiven'
         self.potek = self.objava + datetime.timedelta(days=30)
 
-
-def extractTextsInElementsFromSoup(css_selector: str) -> list:
+def extractTextsInElementsFromSoup(soup: object, css_selector: str) -> list:
     resultsHtml = soup.select(css_selector)
     resultsText = [i.get_text().strip() for i in resultsHtml]
     return resultsText
 
 
-def extractAttributValuesFromSoup(css_selector: str, attr: str) -> list:
+def extractAttributeValuesFromSoup(soup: object, css_selector: str, attr: str) -> list:
     resultsHtml = soup.select(css_selector)
     resultsAttributes = [i.get(attr).strip() for i in resultsHtml]
     return resultsAttributes
 
 
+
 def createDictObjektovNajnovejsihProduktov(selektorji) -> dict:
+    print('Pregledujem oglase na Bolhi...')
     dictObjektovProduktov = {}
-    stStrani = 1
+    #stStrani = 1
     #stranOglasov = url+'&page='+str(stStrani)
-    for loopNum in range(3):
-        stranOglasov = url+'&page='+str(stStrani)
-        naslovi = extractTextsInElementsFromSoup(selektorji['naslov'])
-        if naslovi == []:
-            return dictObjektovProduktov
-        ceneZValuto = extractTextsInElementsFromSoup(selektorji['cena'])
-        cene = [int(i[:-2]) for i in ceneZValuto]
-        idji = extractAttributValuesFromSoup(selektorji['id_'], 'name')
-        testno = extractAttributValuesFromSoup(selektorji['objava'], 'datetime')
-        objave = [dateutil.parser.parse(i) for i in extractAttributValuesFromSoup(
-            selektorji['objava'], 'datetime')]
+    stranOglasov = url
+    for loopNum in range (200):         # omejeno, da max možnih strani 200 - lahko povečaš
+        page = requests.get(stranOglasov, headers)
+        soup = bs4.BeautifulSoup(page.content, 'html.parser')
+        naslovi = extractTextsInElementsFromSoup(soup,selektorji['naslov'])
+        ceneZValuto = extractTextsInElementsFromSoup(soup,selektorji['cena'])
+        cene = [i.rstrip(' €') for i in ceneZValuto]         #TODO: že tukaj spremeniti cene v int (toda problem, da ponekod str 'po dogovoru')
+        idji = extractAttributeValuesFromSoup(soup,selektorji['id_'], 'name')
+        testno = extractAttributeValuesFromSoup(soup,selektorji['objava'], 'datetime')
+        objave = [dateutil.parser.parse(i) for i in extractAttributeValuesFromSoup(
+            soup,selektorji['objava'], 'datetime')]
         # print('\nOBJAVE:\n'objave)
 
         for naslov, cena, id_, objava in zip(naslovi, cene, idji, objave):
             dictObjektovProduktov[naslov] = Produkt(
                 naslov, cena, id_, objava, datetime.date.today())
-        stStrani+= 1
+        # prehod na naslednjo stran oglasov:
+        nextPageLinkPathsList = extractAttributeValuesFromSoup(soup,selektorji['nextPage'], 'href')  # TODO: spremeni iskanje, da ne bo s selektorji (da najde le 1. hit)
+        if len (nextPageLinkPathsList) == 0:
+            return dictObjektovProduktov
+        else:
+            nextPageLinkPath = nextPageLinkPathsList[0]
+            nextPageLink = 'https://www.bolha.com/'+ nextPageLinkPath   #TODO: spremeni za poljubni page
+            stranOglasov = nextPageLink
     return dictObjektovProduktov
 
 
@@ -108,10 +118,10 @@ def getStringOglasov(DictOglasov: dict) -> str:
         for produkt in DictOglasov.values():
             doPoteka = (produkt.objava + datetime.timedelta(days=30) -
                         datetime.datetime.now(datetime.timezone.utc)).days
-            poljaZaIzpis = [f'{produkt.cenaZadnja:>3}',
-                            ' || ', produkt.naslov[:38].ljust(40,'_'),
-                            ' || ŠE:', str(doPoteka).rjust(2),
-                            ' || DO:', f'{produkt.potek:%Y-%m-%d}',
+            poljaZaIzpis = [           produkt.cenaZadnja[:4].ljust(4),
+                            ' || ',    produkt.naslov[:38].ljust(40,'_'),
+                            ' || ŠE:', str(doPoteka).rjust(2)
+                            #' || DO:', f'{produkt.potek:%Y-%m-%d}',
                             #' || STATUS:', produkt.status
                             #' || ID:', produkt.id
                             ]
@@ -274,7 +284,7 @@ def nastavitveMaila():
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 noviOglasi = createDictObjektovNajnovejsihProduktov(selektorji)
 stariOglasi = getStariOglasiFromStorage(noviOglasi)
-mockSpreminjanjeCen()
+#mockSpreminjanjeCen()
 primerjajCene(stariOglasi, noviOglasi, True)   # ce zelis programersko izklopit možnost posiljanja mailov, naj bo 3. argument=False 
 sprintajOglase(noviOglasi)
 shraniNoveCeneVStorage(noviOglasi)
