@@ -10,7 +10,7 @@
 # TODO: pri datetime.now() moram stalno pisat še timezone, ker je ta prisotna, ko parsa z neta - tam jo moraš skenslat (z ignoretz = True - ampak nekaj ni delalo)
 # TODO: spremeni (razširi), da lahko poljubni search term (naj naredi objekt za vsak search term)
 # TODO: spremeni (razširi), da lahko tudi poljubni iskalnik (ne le Bolha) >> torej da so selektorji atributi objekta za posamezen iskalnik )
-# TODO: še analiza cen (povrprečna cena / mediana [ker outlayerji]) + možnost da se določene za trajno izloči (ker oglas za nekaj drugega)
+# TODO: še analiza cen (povprečna cena / mediana [ker outlayerji]) + možnost da se določene za trajno izloči (ker oglas za nekaj drugega)
 
 import requests
 import bs4
@@ -23,7 +23,9 @@ import pprint
 import ezgmail
 
 # ta url lahko tu spremeniš v poljubni search term (po keywords=)
-url = 'https://www.bolha.com/?ctl=search_ads&keywords=bukova+drva'
+baseUrl ='https://www.bolha.com/?ctl=search_ads&keywords='
+query = 'oculus+quest'
+url = baseUrl+query
 headers = {
     'User-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:81.0) Gecko/20100101 Firefox/81.0'}
 #email = 'youremailaddres@gmail.com' # spremeni v email naslov, kamor naj pošilja obvestila o spremembah ()
@@ -80,9 +82,11 @@ def createDictObjektovNajnovejsihProduktov(selektorji) -> dict:
             soup,selektorji['objava'], 'datetime')]
         # print('\nOBJAVE:\n'objave)
 
+        # ustvari dict objektov oglasov:
         for naslov, cena, id_, objava in zip(naslovi, cene, idji, objave):
-            dictObjektovProduktov[naslov] = Produkt(
+            dictObjektovProduktov[id_] = Produkt(
                 naslov, cena, id_, objava, datetime.date.today())
+
         # prehod na naslednjo stran oglasov:
         nextPageLinkPathsList = extractAttributeValuesFromSoup(soup,selektorji['nextPage'], 'href')  # TODO: spremeni iskanje, da ne bo s selektorji (da najde le 1. hit)
         if len (nextPageLinkPathsList) == 0:
@@ -96,7 +100,7 @@ def createDictObjektovNajnovejsihProduktov(selektorji) -> dict:
 
 
 def getStariOglasiFromStorage(backupOglasi):
-    storage = shelve.open('./userData/storage')
+    storage = shelve.open('./userData/'+query)
     #print('storage keys =', list(storage.items()))
     try:
         stariOglasi = storage['oglasi']
@@ -141,41 +145,42 @@ def primerjajCene(stariOglasi: dict, noviOglasi: dict, aliPosljeMail = False):
     """Primerja stare in nove oglase in izpiše spremembe. Ter pošlje mail o spremembah, če argument 'aliPosljeMail'=True"""
     print('\nSPREMEMBE PRI OGLASIH')
     spremembe = []
-    #updatedOglasi = stariOglasi        # to bo za nov feature zgodovine sprememb oglasov
+    updatedOglasi = stariOglasi        # to bo za nov feature zgodovine sprememb oglasov
 
     # preveri, če vsi stari še tu in če se kaj spremenili:
-    # (tak local variable, ker je DictProduktov sestavljen iz {'produktObjekt.ime':produktObjekt})
-    for staroIme, stariProdukt in stariOglasi.items():
-        if staroIme not in noviOglasi:
-            # 1.a opcija: oglasa ni več, ker oglas potekel
-            # a to deluje?
+    for stariId, stariProdukt in stariOglasi.items():
+        # 1. opcija: oglasa ni več
+        if stariId not in noviOglasi:
+            # 1.a opcija: oglasa ni več, ker oglas potekel:
             if datetime.datetime.now(datetime.timezone.utc) > stariProdukt.potek:
                 sporocilo = f'---{stariProdukt.naslov}\n   (oglas je potekel - zadnja cena: {stariProdukt.cenaZadnja}€)'
                 spremembe.append(sporocilo)
-                #updatedOglasi[staroIme].status = 'potekel'
+                #updatedOglasi[stariId].status = 'potekel'
 
-            # 1.b opcija: oglasa ni več, ker izdelek prodan
+            # 1.b opcija: oglasa ni več, ker izdelek prodan:
             if datetime.datetime.now(datetime.timezone.utc) < stariProdukt.potek:
                 sporocilo = f'---{stariProdukt.naslov}\n   (izdelek prodan - zadnja cena: {stariProdukt.cenaZadnja}€)'
                 spremembe.append(sporocilo)
-                #updatedOglasi[staroIme].status = 'prodan'
-        elif staroIme in noviOglasi:
-            # 2.a opcija: oglas aktiven, a spremenjena cena
-            if stariProdukt.cenaZadnja != noviOglasi[staroIme].cenaZadnja:
-                sporocilo = f"---{staroIme} \n   (sprememba cene: {stariProdukt.cenaZadnja}€ >> {noviOglasi[staroIme].cenaZadnja}€)"
+                #updatedOglasi[stariId].status = 'prodan'
+
+        # 2. opcija: oglas še vedno obstaja:
+        elif stariId in noviOglasi:
+            # 2.a opcija: oglas aktiven, a spremenjena cena:
+            if stariProdukt.cenaZadnja != noviOglasi[stariId].cenaZadnja:
+                sporocilo = f"---{stariId} \n   (sprememba cene: {stariProdukt.cenaZadnja}€ >> {noviOglasi[stariId].cenaZadnja}€)"
                 spremembe.append(sporocilo)
             # 2.b opcija: oglas aktiven in enak
             else:
-                #print(f'---{staroIme}: ni spremembe')
+                #print(f'---{stariId}: ni spremembe')
                 pass
         else:
             print('NAPAKA - stari oglas niti ni v novih oglasih niti je - wtf?')
 
     # preveri, če kak nov oglas, ki ga ni bilo pri starih
-    for novoIme in noviOglasi.keys():
+    for noviID in noviOglasi.keys():
         # 3. opcija: nov oglas
-        if novoIme not in stariOglasi:
-            sporocilo = f'---{novoIme}, {noviOglasi[novoIme].cenaZadnja}€\n   (to je nov oglas!)'
+        if noviID not in stariOglasi:
+            sporocilo = f'---{noviID}, {noviOglasi[noviID].cenaZadnja}€\n   (to je nov oglas!)'
             spremembe.append(sporocilo)
         # TODO: naj preveri, če ta oglas bil že prej, a neaktiven (če ima isti ID) - zato rabiš najprej seznam neaktivnih
 
@@ -191,7 +196,7 @@ def primerjajCene(stariOglasi: dict, noviOglasi: dict, aliPosljeMail = False):
         print(stringVsehSprememb)
     
         # poslji mail obvestilo:
-        storage = shelve.open('./userData/storage')
+        storage = shelve.open('./userData/'+query)
         
         if (aliPosljeMail == True) and ('aliPosiljaMaile' in storage.keys()) and (storage['aliPosiljaMaile'] == True):
             izpisNovihOglasov = getStringOglasov(noviOglasi)
@@ -204,20 +209,20 @@ def primerjajCene(stariOglasi: dict, noviOglasi: dict, aliPosljeMail = False):
 def mockSpreminjanjeCen():
     #del(noviOglasi['Oculus Quest 128GB'])
     noviOglasi['avtodus'] = Produkt(
-        'avtobus', 77, 111111, datetime.datetime.now(datetime.timezone.utc), {})
+        'avtobus', "77", 111111, datetime.datetime.now(datetime.timezone.utc), {})
     #noviOglasi['Oculus Quest 64 GB'].cenaZadnja = 50
 
 
 def shraniNoveCeneVStorage(noviOglasi: dict):
     # if input("\nZa shranitev novih oglasov pritisni Y+[enter] // ali pa preskoči z [enter]: ") in ['y', 'Y']:
-    storage = shelve.open('./userData/storage')
+    storage = shelve.open('./userData/'+query)
     storage['oglasi'] = noviOglasi
     storage.close()
     print('\n(shranil nove oglase v storage)')
 
 
 def posljiMail(subject, telo):
-    storage = shelve.open('./userData/storage')
+    storage = shelve.open('./userData/'+query)
     try:
         mailNaslov = storage['mailNaslov']
         ezgmail.send(mailNaslov, subject, telo)
@@ -235,7 +240,7 @@ except expression as identifier:
     pass
 
 def nastavitveMaila():
-    storage = shelve.open('./userData/storage')
+    storage = shelve.open('./userData/'+query)
     # preveri, ali je pošiljanje mailov vklopljeno:
     if 'aliPosiljaMaile' not in storage.keys(): # (če še nikdar nastavljeno)
         storage['aliPosiljaMaile'] = False
