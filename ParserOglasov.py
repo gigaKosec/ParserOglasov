@@ -17,6 +17,7 @@ import bs4
 import sys
 import shelve
 import os
+import copy
 import datetime
 import dateutil.parser
 import pprint
@@ -122,11 +123,11 @@ def getStringOglasov(DictOglasov: dict) -> str:
         for produkt in DictOglasov.values():
             doPoteka = (produkt.objava + datetime.timedelta(days=30) -
                         datetime.datetime.now(datetime.timezone.utc)).days
-            poljaZaIzpis = [           produkt.cenaZadnja[:4].ljust(4),
-                            ' || ',    produkt.naslov[:38].ljust(40,'_'),
-                            ' || ŠE:', str(doPoteka).rjust(2)
+            poljaZaIzpis = [           str(produkt.cenaZadnja)[:4].ljust(4),
+                            ' || ',        produkt.naslov[:38].ljust(40,'_'),
+                            ' || ŠE:', str(doPoteka).rjust(2),
                             #' || DO:', f'{produkt.potek:%Y-%m-%d}',
-                            #' || STATUS:', produkt.status
+                            ' || STATUS:', produkt.status
                             #' || ID:', produkt.id
                             ]
             vrstica = ''.join(polje for polje in poljaZaIzpis)
@@ -141,47 +142,78 @@ def sprintajOglase(oglasi):
     if input('\nZa izpis oglasov pritisni Y+[enter] \\ ali pa preskoči z [enter]: ') in ('y', 'Y'):
         print(getStringOglasov(oglasi))
 
-def primerjajCene(stariOglasi: dict, noviOglasi: dict, aliPosljeMail = False):
-    """Primerja stare in nove oglase in izpiše spremembe. Ter pošlje mail o spremembah, če argument 'aliPosljeMail'=True"""
+def logirajSpremembe(spremembe):
+    print('\n(logiram spremembe v file: /userData/'+query+'-log.txt)')
+    with open('./userData/'+query+'-log.txt','a') as log:
+        log.write('\n'+str(datetime.date.today())+':\n')
+        for line in spremembe:
+            log.write(line+'\n')
+        #log.writelines(str(datetime.date.today)+': \n'+spremembe+'\n')
+
+def primerjajCene(stariOglasi: dict, noviOglasi: dict, aliPosljeMail = False) -> list,dict:
+    """Primerja stare in nove oglase in izpiše spremembe. Ter pošlje mail o spremembah, če argument 'aliPosljeMail'=True
+    Vrne list sprememb in updatan list vseh oglasov"""
     print('\nSPREMEMBE PRI OGLASIH')
     spremembe = []
-    updatedOglasi = stariOglasi        # to bo za nov feature zgodovine sprememb oglasov
+    # historyOglasi = copy.deepcopy(stariOglasi)        # to je za zgodovino sprememb oglasov
 
     # preveri, če vsi stari še tu in če se kaj spremenili:
     for stariId, stariProdukt in stariOglasi.items():
-        # 1. opcija: oglasa ni več
-        if stariId not in noviOglasi:
-            # 1.a opcija: oglasa ni več, ker oglas potekel:
-            if datetime.datetime.now(datetime.timezone.utc) > stariProdukt.potek:
-                sporocilo = f'---{stariProdukt.naslov}\n   (oglas je potekel - zadnja cena: {stariProdukt.cenaZadnja}€)'
-                spremembe.append(sporocilo)
-                #updatedOglasi[stariId].status = 'potekel'
+        
+        # najprej spremeni status 'novih' v 'aktivne' če že minilo 2 dni:       # a bi blo to bolj primerno kje drugje?
+        if (stariProdukt.status == 'novi') and (stariProdukt.objava + datetime.timedelta(days=2)) < datetime.datetime.now(datetime.timezone.utc):
+            stariProdukt.status = 'aktiven'
+        
+        #I.) AKTIVNI OGLASI:
+        if stariProdukt.status in ['aktiven','novi']:
+            # I.1.) aktivnega oglasa ni več:
+            if (stariId not in noviOglasi):
+                # I.1.a) aktivnega oglasa ni več, ker oglas potekel:
+                if datetime.datetime.now(datetime.timezone.utc) > stariProdukt.potek:
+                    sporocilo = f'---{stariProdukt.naslov}\n   (oglas je potekel - zadnja cena: {stariProdukt.cenaZadnja}€)'
+                    spremembe.append(sporocilo)
+                    stariProdukt.status = 'potekel'
+                    #historyOglasi[stariId].status = 'potekel'
 
-            # 1.b opcija: oglasa ni več, ker izdelek prodan:
-            if datetime.datetime.now(datetime.timezone.utc) < stariProdukt.potek:
-                sporocilo = f'---{stariProdukt.naslov}\n   (izdelek prodan - zadnja cena: {stariProdukt.cenaZadnja}€)'
-                spremembe.append(sporocilo)
-                #updatedOglasi[stariId].status = 'prodan'
+                # I.1.b) aktivnega oglasa ni več, ker izdelek prodan:
+                if datetime.datetime.now(datetime.timezone.utc) < stariProdukt.potek:
+                    sporocilo = f'---{stariProdukt.naslov}\n   (izdelek prodan - zadnja cena: {stariProdukt.cenaZadnja}€)'
+                    spremembe.append(sporocilo)
+                    stariProdukt.status = 'prodan'
+                    #historyOglasi[stariId].status = 'prodan'
 
-        # 2. opcija: oglas še vedno obstaja:
-        elif stariId in noviOglasi:
-            # 2.a opcija: oglas aktiven, a spremenjena cena:
-            if stariProdukt.cenaZadnja != noviOglasi[stariId].cenaZadnja:
-                sporocilo = f"---{stariId} \n   (sprememba cene: {stariProdukt.cenaZadnja}€ >> {noviOglasi[stariId].cenaZadnja}€)"
-                spremembe.append(sporocilo)
-            # 2.b opcija: oglas aktiven in enak
+            # I.2.) aktivni oglas še vedno obstaja:
+            elif stariId in noviOglasi:
+                # I.2.a) oglas aktiven, a spremenjena cena:
+                if stariProdukt.cenaZadnja != noviOglasi[stariId].cenaZadnja:
+                    sporocilo = f"---{stariProdukt.naslov} \n   (sprememba cene: {stariProdukt.cenaZadnja}€ >> {noviOglasi[stariId].cenaZadnja}€)"
+                    spremembe.append(sporocilo)
+                    stariProdukt.cenaZadnja = noviOglasi[stariId].cenaZadnja
+                    #historyOglasi[stariId].cenaZadnja = noviOglasi[stariId].cenaZadnja
+                # I.2.b) oglas aktiven in enak
+                else:
+                    #print(f'---{stariId}: ni spremembe')
+                    pass
             else:
-                #print(f'---{stariId}: ni spremembe')
-                pass
-        else:
-            print('NAPAKA - stari oglas niti ni v novih oglasih niti je - wtf?')
+                print('NAPAKA - stari oglas niti ni v novih oglasih niti je - wtf?')
+            
+            # v vsakem primeru pa tudi updataj history sprememb
+            # ...koda...
+
+        # I.) NEAKTIVNI OGLASI
+        """ if (stariProdukt.status in ['prodan','potekel']) and (stariId in noviOglasi):
+            sporocilo = f"---{stariProdukt.naslov}, \n   (potekli oglas se je znova pojavil! {stariProdukt.cenaZadnja}€ >> {noviOglasi[stariId].cenaZadnja}€)"
+                spremembe.append(sporocilo)
+                stariProdukt.status = 'aktiven' # ???? """
 
     # preveri, če kak nov oglas, ki ga ni bilo pri starih
-    for noviID in noviOglasi.keys():
-        # 3. opcija: nov oglas
-        if noviID not in stariOglasi:
-            sporocilo = f'---{noviID}, {noviOglasi[noviID].cenaZadnja}€\n   (to je nov oglas!)'
+    for noviId, noviProdukt in noviOglasi.items():
+        # 3.) nov oglas
+        if noviId not in stariOglasi:
+            sporocilo = f'---{noviProdukt.naslov}; {noviProdukt.cenaZadnja}€\n   (to je nov oglas!)'
             spremembe.append(sporocilo)
+            stariOglasi[noviId] = noviProdukt
+            stariOglasi[noviId].status = 'novi'
         # TODO: naj preveri, če ta oglas bil že prej, a neaktiven (če ima isti ID) - zato rabiš najprej seznam neaktivnih
 
     # na koncu preveri, če bilo skupno kaj sprememb
@@ -203,14 +235,25 @@ def primerjajCene(stariOglasi: dict, noviOglasi: dict, aliPosljeMail = False):
             teloMaila = stringVsehSprememb+izpisNovihOglasov+'\n\nLink do oglasov na Bolhi: \n'+url    # pazi, to je global var
             posljiMail('Spremembe na Bolhi!',teloMaila)
 
-        # TODO: if input('Ali želiš pogledati stran na bolhi? ( Y+[enter] za yes // [enter] za preskoči') in (y,Y):
 
+        # TODO: if input('Ali želiš pogledati stran na bolhi? ( Y+[enter] za yes // [enter] za preskoči') in (y,Y):
+    return spremembe, stariOglasi
 
 def mockSpreminjanjeCen():
-    #del(noviOglasi['Oculus Quest 128GB'])
-    noviOglasi['avtodus'] = Produkt(
-        'avtobus', "77", 111111, datetime.datetime.now(datetime.timezone.utc), {})
-    #noviOglasi['Oculus Quest 64 GB'].cenaZadnja = 50
+    print ('Mock spreminjam par oglasov')
+    try:
+        del(noviOglasi['4892108'])
+    except:
+        print ('Nisem mogel mock zbrisat enega oglasa - očitno ne obstaja več)
+    try:
+        noviOglasi['111111'] = Produkt(
+        'avtobus', "77", '111111', datetime.datetime.now(datetime.timezone.utc), {})
+    except:
+        print ('Nisem mogel mock dodat novega oglasa - očitno rabi dodatne nove attribute')
+    try:
+        noviOglasi['4983459'].cenaZadnja = 50
+    except:
+        print ('Nisem mogel mock spremenit cene pri enem oglasu - očitno ne obstaja več')
 
 
 def shraniNoveCeneVStorage(noviOglasi: dict):
@@ -234,19 +277,16 @@ def posljiMail(subject, telo):
         print('\nEmail naslov za pošiljanje ni določen.')
     storage.close()
 
-try:
-    pass
-except expression as identifier:
-    pass
 
 def nastavitveMaila():
+    print ('\nNASTAVITVE POŠILJANJA NA MAIL:')
     storage = shelve.open('./userData/'+query)
     # preveri, ali je pošiljanje mailov vklopljeno:
     if 'aliPosiljaMaile' not in storage.keys(): # (če še nikdar nastavljeno)
         storage['aliPosiljaMaile'] = False
     
     if storage['aliPosiljaMaile'] == False:
-        print('pošiljanje email obvestil o spremembah je IZKLOPLJENO.')
+        print('Pošiljanje email obvestil o spremembah je IZKLOPLJENO.')
     elif storage['aliPosiljaMaile'] == True:
         print ('Pošiljanje email obvestil o spremembah je VKLOPLJENO.')
     try:
@@ -289,10 +329,11 @@ def nastavitveMaila():
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 noviOglasi = createDictObjektovNajnovejsihProduktov(selektorji)
 stariOglasi = getStariOglasiFromStorage(noviOglasi)
-#mockSpreminjanjeCen()
-primerjajCene(stariOglasi, noviOglasi, True)   # ce zelis programersko izklopit možnost posiljanja mailov, naj bo 3. argument=False 
-sprintajOglase(noviOglasi)
-shraniNoveCeneVStorage(noviOglasi)
+mockSpreminjanjeCen()
+spremembe, updatedOglasi = primerjajCene(stariOglasi, noviOglasi, True)   # ce zelis programersko izklopit možnost posiljanja mailov, naj bo 3. argument=False 
+sprintajOglase(updatedOglasi)
+logirajSpremembe(spremembe)
+#shraniNoveCeneVStorage(noviOglasi)
 nastavitveMaila()
 
 
