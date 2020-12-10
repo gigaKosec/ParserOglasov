@@ -2,14 +2,12 @@
 # OPIS: program parsa cene na Bolhi za določen item (oz search term - tu: oculus quest), in sporoči, če prišlo do sprememb (cen ali če kak item ne obstaja več)
 # pozor: za pošiljanje mailov uporablja modul EZGmail - tega je treba instalati s pip + potrebuje določene nastavitve na gmail accountu (da ta lahko pošilja maile)
 # BUG mali: ko pošlje stringOglasov gmailu ("tabela" iz stringov), se tabela "podere", ker font v gmailu nima enake širine vseh znakov
-# TODO: zanekrat parsa le eno stran oglasov >> naj pregleda še ostale
-# TODO: beleži zgodovino sprememb oglasov (ne le trenutno stanje vs nazadnje)
 # TODO: trenutno vsaka funkcija, ki rabi storage, znova odpre in zapre storage >> iz storage-a poberi na začetku, kar rabiš
 # TODO: ko program prvič zagnan, problem ker ni določenih keyev v storage-u (npr za nastavitve mail pošiljanja) >> na začetku preveri, če jih ni, in ustvari default vrednosti
 # TODO: kaj če se spremeni ime oglasa (naj primarno primerja ID-je, ne naslove)
 # TODO: pri datetime.now() moram stalno pisat še timezone, ker je ta prisotna, ko parsa z neta - tam jo moraš skenslat (z ignoretz = True - ampak nekaj ni delalo)
 # TODO: spremeni (razširi), da lahko poljubni search term (naj naredi objekt za vsak search term)
-# TODO: spremeni (razširi), da lahko tudi poljubni iskalnik (ne le Bolha) >> torej da so selektorji atributi objekta za posamezen iskalnik )
+# TODO: spremeni (razširi), da lahko tudi poljubni iskalnik (ne le Bolha) >> torej da so selektorji atributi objekta za posamezen iskalnik 
 # TODO: še analiza cen (povrprečna cena / mediana [ker outlayerji]) + možnost da se določene za trajno izloči (ker oglas za nekaj drugega)
 
 import requests
