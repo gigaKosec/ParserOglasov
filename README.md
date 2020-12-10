@@ -1,5 +1,5 @@
 # ParserOglasov
-Program parsa izbrane oglase na Bolha.com in obvesti o spremembah (npr. če kak nov oglas, če kakega oglasa ni več, če kake cene spremenjene).
+Program parsa izbrane oglase na Bolha.com in obvesti o spremembah (npr. če kak nov oglas, če kakega oglasa ni več, če kake cene spremenjene) ter beleži zgodovino teh sprememb.
  
 O spremembah lahko obvesti tudi preko maila (zaenkrat edino preko Gmaila).
 Program za pošiljanje mailov uporablja python modul EZGmail (to je modul za preprosto pošiljanje e-pošte preko Gmaila) - tega je potrebno instalirati s pip. Potrebno pa je tudi nastaviti določene nastavitve na gmail accountu - na  strani
